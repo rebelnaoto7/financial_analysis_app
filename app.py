@@ -1,390 +1,441 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import yfinance as yf
 
-st.set_page_config(
-    page_title="Single Firm Financial Analysis",
-    page_icon="📊",
-    layout="wide"
-)
 
-st.title("📊 Single Firm Financial Analysis")
-st.caption("RUNNING: SINGLE_FIRM_APP_V1")
-st.write("1社の財務データを時系列で分析します。")
+st.set_page_config(page_title="財務分析アプリ", layout="wide")
 
-# =========================
-# Sample Data
-# Microsoft FY2021-FY2024 style sample data
-# Unit: USD millions / Shares: millions
-# =========================
-sample_rows = [
-    {
-        "Year": 2021,
-        "Revenue": 168088,
-        "Operating_Income": 69916,
-        "Net_Income": 61271,
-        "Total_Assets": 333779,
-        "Equity": 141988,
-        "Debt": 67775,
-        "Cash": 130334,
-        "Operating_CF": 76740,
-        "Capex": 20622,
-        "Shares_Outstanding": 7519,
-        "Stock_Price": 281.92,
-        "Tax_Rate": 0.14,
-    },
-    {
-        "Year": 2022,
-        "Revenue": 198270,
-        "Operating_Income": 83383,
-        "Net_Income": 72738,
-        "Total_Assets": 364840,
-        "Equity": 166542,
-        "Debt": 47032,
-        "Cash": 104749,
-        "Operating_CF": 89035,
-        "Capex": 23886,
-        "Shares_Outstanding": 7464,
-        "Stock_Price": 239.82,
-        "Tax_Rate": 0.13,
-    },
-    {
-        "Year": 2023,
-        "Revenue": 211915,
-        "Operating_Income": 88523,
-        "Net_Income": 72361,
-        "Total_Assets": 411976,
-        "Equity": 206223,
-        "Debt": 47237,
-        "Cash": 111262,
-        "Operating_CF": 87582,
-        "Capex": 28107,
-        "Shares_Outstanding": 7432,
-        "Stock_Price": 340.54,
-        "Tax_Rate": 0.19,
-    },
-    {
-        "Year": 2024,
-        "Revenue": 245122,
-        "Operating_Income": 109433,
-        "Net_Income": 88136,
-        "Total_Assets": 512163,
-        "Equity": 268477,
-        "Debt": 51630,
-        "Cash": 75543,
-        "Operating_CF": 118548,
-        "Capex": 44477,
-        "Shares_Outstanding": 7433,
-        "Stock_Price": 446.95,
-        "Tax_Rate": 0.18,
-    },
-]
 
-df = pd.DataFrame(sample_rows)
+COMPANY_ALIASES = {
+    "apple": "AAPL",
+    "アップル": "AAPL",
+    "microsoft": "MSFT",
+    "マイクロソフト": "MSFT",
+    "nvidia": "NVDA",
+    "エヌビディア": "NVDA",
+    "amazon": "AMZN",
+    "アマゾン": "AMZN",
+    "google": "GOOGL",
+    "alphabet": "GOOGL",
+    "グーグル": "GOOGL",
+    "meta": "META",
+    "facebook": "META",
+    "メタ": "META",
+    "tesla": "TSLA",
+    "テスラ": "TSLA",
+    "sofi": "SOFI",
+    "sofi technologies": "SOFI",
+    "ソーファイ": "SOFI",
 
-# =========================
-# Sidebar
-# =========================
-st.sidebar.header("データ入力")
-
-uploaded_file = st.sidebar.file_uploader(
-    "CSVファイルをアップロードしてください",
-    type=["csv"]
-)
-
-if uploaded_file is not None:
-    df = pd.read_csv(uploaded_file)
-    st.sidebar.success("CSVファイルを読み込みました。")
-else:
-    st.sidebar.info("サンプルデータを使用しています。")
-
-# =========================
-# Required Columns
-# =========================
-required_columns = [
-    "Year",
-    "Revenue",
-    "Operating_Income",
-    "Net_Income",
-    "Total_Assets",
-    "Equity",
-    "Debt",
-    "Cash",
-    "Operating_CF",
-    "Capex",
-    "Shares_Outstanding",
-    "Stock_Price",
-    "Tax_Rate",
-]
-
-missing_columns = [col for col in required_columns if col not in df.columns]
-
-if missing_columns:
-    st.error("以下の列が不足しています。CSVを確認してください。")
-    st.write(missing_columns)
-    st.stop()
-
-df = df.sort_values("Year").reset_index(drop=True)
-
-for col in required_columns:
-    df[col] = pd.to_numeric(df[col], errors="coerce")
-
-if df[required_columns].isnull().any().any():
-    st.warning("数値に変換できないデータがあります。CSVの中身を確認してください。")
-
-# =========================
-# Financial Calculations
-# =========================
-df["Revenue_Growth"] = df["Revenue"].pct_change()
-
-df["Operating_Margin"] = df["Operating_Income"] / df["Revenue"]
-df["Net_Margin"] = df["Net_Income"] / df["Revenue"]
-
-df["Equity_Ratio"] = df["Equity"] / df["Total_Assets"]
-df["Debt_to_Equity"] = df["Debt"] / df["Equity"]
-
-df["FCF"] = df["Operating_CF"] - df["Capex"]
-df["FCF_Margin"] = df["FCF"] / df["Revenue"]
-
-df["EPS"] = df["Net_Income"] / df["Shares_Outstanding"]
-df["BPS"] = df["Equity"] / df["Shares_Outstanding"]
-
-df["PER"] = df["Stock_Price"] / df["EPS"]
-df["PBR"] = df["Stock_Price"] / df["BPS"]
-
-df["ROE"] = df["Net_Income"] / df["Equity"]
-
-df["NOPAT"] = df["Operating_Income"] * (1 - df["Tax_Rate"])
-df["Invested_Capital"] = df["Debt"] + df["Equity"] - df["Cash"]
-df["ROIC"] = df["NOPAT"] / df["Invested_Capital"]
-
-df["Market_Cap"] = df["Stock_Price"] * df["Shares_Outstanding"]
-df["Enterprise_Value"] = df["Market_Cap"] + df["Debt"] - df["Cash"]
-
-# =========================
-# Display Data
-# =========================
-st.subheader("1. 財務データ・計算結果")
-display_df = df.copy()
-
-float_format_map = {
-    "Year": "{:,.0f}",
-    "Revenue": "{:,.2f}",
-    "Operating_Income": "{:,.2f}",
-    "Net_Income": "{:,.2f}",
-    "Total_Assets": "{:,.2f}",
-    "Equity": "{:,.2f}",
-    "Debt": "{:,.2f}",
-    "Cash": "{:,.2f}",
-    "Operating_CF": "{:,.2f}",
-    "Capex": "{:,.2f}",
-    "Shares_Outstanding": "{:,.2f}",
-    "Stock_Price": "{:,.2f}",
-    "Tax_Rate": "{:,.2%}",
-    "Revenue_Growth": "{:,.2%}",
-    "Operating_Margin": "{:,.2%}",
-    "Net_Margin": "{:,.2%}",
-    "Equity_Ratio": "{:,.2%}",
-    "Debt_to_Equity": "{:,.2f}",
-    "FCF": "{:,.2f}",
-    "FCF_Margin": "{:,.2%}",
-    "EPS": "{:,.2f}",
-    "BPS": "{:,.2f}",
-    "PER": "{:,.2f}",
-    "PBR": "{:,.2f}",
-    "ROE": "{:,.2%}",
-    "NOPAT": "{:,.2f}",
-    "Invested_Capital": "{:,.2f}",
-    "ROIC": "{:,.2%}",
-    "Market_Cap": "{:,.2f}",
-    "Enterprise_Value": "{:,.2f}",
+    "トヨタ": "7203.T",
+    "トヨタ自動車": "7203.T",
+    "toyota": "7203.T",
+    "toyota motor": "7203.T",
+    "ソニー": "6758.T",
+    "ソニーグループ": "6758.T",
+    "sony": "6758.T",
+    "任天堂": "7974.T",
+    "nintendo": "7974.T",
+    "ソフトバンク": "9984.T",
+    "ソフトバンクグループ": "9984.T",
+    "softbank": "9984.T",
+    "キーエンス": "6861.T",
+    "keyence": "6861.T",
+    "三菱ufj": "8306.T",
+    "mufg": "8306.T",
+    "ntt": "9432.T",
+    "日本電信電話": "9432.T",
 }
 
-st.dataframe(display_df.style.format(float_format_map), width="stretch")
 
-latest = df.iloc[-1]
+FINANCIAL_ITEM_JA = {
+    "Total Revenue": "売上高",
+    "Operating Revenue": "営業収益",
+    "Cost Of Revenue": "売上原価",
+    "Gross Profit": "売上総利益",
+    "Operating Income": "営業利益",
+    "Net Income": "純利益",
+    "Net Income Common Stockholders": "普通株主に帰属する純利益",
+    "Basic EPS": "基本EPS",
+    "Diluted EPS": "希薄化後EPS",
 
-# =========================
-# Latest Summary
-# =========================
-st.subheader("2. 最新年度サマリー")
+    "Total Assets": "総資産",
+    "Current Assets": "流動資産",
+    "Cash And Cash Equivalents": "現金及び現金同等物",
+    "Inventory": "棚卸資産",
+    "Total Liabilities Net Minority Interest": "負債合計",
+    "Current Liabilities": "流動負債",
+    "Long Term Debt": "長期借入金・社債",
+    "Total Debt": "有利子負債",
+    "Stockholders Equity": "株主資本",
+    "Common Stock Equity": "自己資本",
+    "Total Equity Gross Minority Interest": "自己資本合計",
+    "Retained Earnings": "利益剰余金",
 
-col1, col2, col3, col4 = st.columns(4)
+    "Operating Cash Flow": "営業キャッシュフロー",
+    "Cash Flow From Continuing Operating Activities": "継続事業からの営業CF",
+    "Investing Cash Flow": "投資キャッシュフロー",
+    "Financing Cash Flow": "財務キャッシュフロー",
+    "Capital Expenditure": "設備投資",
+    "Free Cash Flow": "フリーキャッシュフロー",
+}
 
-col1.metric("売上高", f"{latest['Revenue']:,.2f}")
-col2.metric("営業利益率", f"{latest['Operating_Margin']:.2%}")
-col3.metric("ROE", f"{latest['ROE']:.2%}")
-col4.metric("ROIC", f"{latest['ROIC']:.2%}")
 
-col5, col6, col7, col8 = st.columns(4)
+def resolve_ticker(user_input):
+    text = user_input.strip()
+    key = text.lower()
 
-revenue_growth_text = "-" if pd.isna(latest["Revenue_Growth"]) else f"{latest['Revenue_Growth']:.2%}"
+    if not text:
+        return ""
 
-col5.metric("売上成長率", revenue_growth_text)
-col6.metric("FCF", f"{latest['FCF']:,.2f}")
-col7.metric("PER", f"{latest['PER']:,.2f} 倍")
-col8.metric("PBR", f"{latest['PBR']:,.2f} 倍")
+    if key in COMPANY_ALIASES:
+        return COMPANY_ALIASES[key]
 
-# =========================
-# Charts
-# =========================
-st.subheader("3. 財務推移グラフ")
+    if text.isdigit() and len(text) == 4:
+        return f"{text}.T"
 
-chart_option = st.selectbox(
-    "表示するグラフを選択してください",
-    [
-        "売上・利益・FCF",
-        "利益率",
-        "ROE・ROIC",
-        "PER・PBR",
-        "キャッシュフロー",
-        "企業価値",
-    ]
-)
+    return text.upper()
 
-fig, ax = plt.subplots(figsize=(10, 5))
 
-if chart_option == "売上・利益・FCF":
-    ax.plot(df["Year"], df["Revenue"], marker="o", label="Revenue")
-    ax.plot(df["Year"], df["Operating_Income"], marker="o", label="Operating Income")
-    ax.plot(df["Year"], df["Net_Income"], marker="o", label="Net Income")
-    ax.plot(df["Year"], df["FCF"], marker="o", label="FCF")
-    ax.set_ylabel("Amount")
+def translate_item(item):
+    item = str(item)
+    return FINANCIAL_ITEM_JA.get(item, item)
 
-elif chart_option == "利益率":
-    ax.plot(df["Year"], df["Operating_Margin"], marker="o", label="Operating Margin")
-    ax.plot(df["Year"], df["Net_Margin"], marker="o", label="Net Margin")
-    ax.plot(df["Year"], df["FCF_Margin"], marker="o", label="FCF Margin")
-    ax.set_ylabel("Ratio")
 
-elif chart_option == "ROE・ROIC":
-    ax.plot(df["Year"], df["ROE"], marker="o", label="ROE")
-    ax.plot(df["Year"], df["ROIC"], marker="o", label="ROIC")
-    ax.set_ylabel("Ratio")
+def find_row(df, names):
+    if df is None or df.empty:
+        return None
 
-elif chart_option == "PER・PBR":
-    ax.plot(df["Year"], df["PER"], marker="o", label="PER")
-    ax.plot(df["Year"], df["PBR"], marker="o", label="PBR")
-    ax.set_ylabel("Multiple")
+    for name in names:
+        if name in df.index:
+            row = df.loc[name]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[0]
+            return row
 
-elif chart_option == "キャッシュフロー":
-    ax.plot(df["Year"], df["Operating_CF"], marker="o", label="Operating CF")
-    ax.plot(df["Year"], df["Capex"], marker="o", label="Capex")
-    ax.plot(df["Year"], df["FCF"], marker="o", label="FCF")
-    ax.set_ylabel("Amount")
+    lower_map = {str(idx).lower(): idx for idx in df.index}
 
-elif chart_option == "企業価値":
-    ax.plot(df["Year"], df["Market_Cap"], marker="o", label="Market Cap")
-    ax.plot(df["Year"], df["Enterprise_Value"], marker="o", label="Enterprise Value")
-    ax.set_ylabel("Amount")
+    for name in names:
+        if name.lower() in lower_map:
+            row = df.loc[lower_map[name.lower()]]
+            if isinstance(row, pd.DataFrame):
+                row = row.iloc[0]
+            return row
 
-ax.set_xlabel("Year")
-ax.set_title(chart_option)
-ax.legend()
-ax.grid(True)
+    return None
 
-st.pyplot(fig)
 
-# =========================
-# DCF
-# =========================
-st.subheader("4. 簡易DCFモデル")
+def get_latest_value(df, names):
+    row = find_row(df, names)
 
-dcf_col1, dcf_col2, dcf_col3, dcf_col4 = st.columns(4)
+    if row is None:
+        return None
 
-base_fcf = dcf_col1.number_input(
-    "基準FCF",
-    value=float(latest["FCF"]),
-    step=100.0,
-    format="%.2f"
-)
+    row = pd.to_numeric(row, errors="coerce").dropna()
 
-growth_rate = dcf_col2.number_input(
-    "FCF成長率",
-    value=0.05,
-    step=0.01,
-    format="%.2f"
-)
+    if row.empty:
+        return None
 
-discount_rate = dcf_col3.number_input(
-    "割引率 / WACC",
-    value=0.08,
-    step=0.01,
-    format="%.2f"
-)
+    try:
+        row.index = pd.to_datetime(row.index)
+        row = row.sort_index()
+    except Exception:
+        pass
 
-terminal_growth = dcf_col4.number_input(
-    "永続成長率",
-    value=0.02,
-    step=0.01,
-    format="%.2f"
-)
+    return row.iloc[-1]
 
-projection_years = 5
 
-if discount_rate <= terminal_growth:
-    st.error("割引率は永続成長率より大きくする必要があります。")
-else:
-    dcf_rows = []
+def get_series(df, names):
+    row = find_row(df, names)
 
-    for year in range(1, projection_years + 1):
-        future_fcf = base_fcf * (1 + growth_rate) ** year
-        present_value = future_fcf / (1 + discount_rate) ** year
+    if row is None:
+        return pd.Series(dtype="float64")
 
-        dcf_rows.append({
-            "Year": year,
-            "Future_FCF": future_fcf,
-            "Present_Value": present_value,
-        })
+    series = pd.to_numeric(row, errors="coerce").dropna()
 
-    dcf_df = pd.DataFrame(dcf_rows)
+    try:
+        series.index = pd.to_datetime(series.index)
+        series = series.sort_index()
+    except Exception:
+        pass
 
-    terminal_fcf = base_fcf * (1 + growth_rate) ** projection_years * (1 + terminal_growth)
-    terminal_value = terminal_fcf / (discount_rate - terminal_growth)
-    terminal_value_pv = terminal_value / (1 + discount_rate) ** projection_years
+    return series
 
-    enterprise_value_dcf = dcf_df["Present_Value"].sum() + terminal_value_pv
-    equity_value_dcf = enterprise_value_dcf - latest["Debt"] + latest["Cash"]
-    intrinsic_value_per_share = equity_value_dcf / latest["Shares_Outstanding"]
 
-    result_col1, result_col2, result_col3, result_col4 = st.columns(4)
+def format_number(value):
+    if value is None or pd.isna(value):
+        return "N/A"
 
-    result_col1.metric("DCF企業価値", f"{enterprise_value_dcf:,.2f}")
-    result_col2.metric("DCF株主価値", f"{equity_value_dcf:,.2f}")
-    result_col3.metric("理論株価", f"{intrinsic_value_per_share:,.2f}")
-    result_col4.metric("現在株価", f"{latest['Stock_Price']:,.2f}")
+    try:
+        return f"{value:,.0f}"
+    except Exception:
+        return str(value)
 
-    st.write("DCF詳細")
 
-    dcf_display = dcf_df.copy()
-    dcf_display["Future_FCF"] = dcf_display["Future_FCF"] / 1000
-    dcf_display["Present_Value"] = dcf_display["Present_Value"] / 1000
+def format_percent(value):
+    if value is None or pd.isna(value):
+        return "N/A"
 
-    dcf_display = dcf_display.rename(columns={
-        "Year": "年",
-        "Future_FCF": "将来FCF（千単位）",
-        "Present_Value": "現在価値（千単位）"
+    try:
+        return f"{value:.2%}"
+    except Exception:
+        return str(value)
+
+
+def statement_to_display(df):
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    out = df.copy()
+    out.index = [translate_item(idx) for idx in out.index]
+
+    new_cols = []
+    for col in out.columns:
+        if hasattr(col, "strftime"):
+            new_cols.append(col.strftime("%Y-%m-%d"))
+        else:
+            new_cols.append(str(col))
+
+    out.columns = new_cols
+    out = out.T.reset_index().rename(columns={"index": "決算日"})
+
+    return out
+
+
+def build_trend_df(income_df, bs_df):
+    revenue = get_series(income_df, ["Total Revenue", "Revenue", "Operating Revenue"])
+    operating_income = get_series(income_df, ["Operating Income"])
+    net_income = get_series(income_df, ["Net Income", "Net Income Common Stockholders"])
+    equity = get_series(bs_df, ["Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"])
+
+    trend_df = pd.DataFrame({
+        "売上高": revenue,
+        "営業利益": operating_income,
+        "純利益": net_income,
+        "自己資本": equity,
     })
 
-    st.dataframe(
-        dcf_display.style.format({
-            "年": "{:,.0f}",
-            "将来FCF（千単位）": "{:,.2f}",
-            "現在価値（千単位）": "{:,.2f}",
-        }),
-        width="stretch"
-    )
+    trend_df = trend_df.sort_index()
 
-# =========================
-# Download
-# =========================
-st.subheader("5. 分析結果ダウンロード")
+    if not trend_df.empty:
+        trend_df["営業利益率"] = trend_df["営業利益"] / trend_df["売上高"]
+        trend_df["純利益率"] = trend_df["純利益"] / trend_df["売上高"]
+        trend_df["ROE"] = trend_df["純利益"] / trend_df["自己資本"]
+        trend_df = trend_df.replace([float("inf"), float("-inf")], pd.NA)
 
-csv = df.to_csv(index=False).encode("utf-8-sig")
+    return trend_df
 
-st.download_button(
-    label="分析結果CSVをダウンロード",
-    data=csv,
-    file_name="single_firm_financial_analysis_result.csv",
-    mime="text/csv"
+
+@st.cache_data(show_spinner=False)
+def fetch_data(ticker_symbol):
+    ticker = yf.Ticker(ticker_symbol)
+
+    try:
+        info = ticker.info
+    except Exception:
+        info = {}
+
+    return {
+        "info": info,
+        "annual_income": ticker.income_stmt,
+        "quarterly_income": ticker.quarterly_income_stmt,
+        "annual_bs": ticker.balance_sheet,
+        "quarterly_bs": ticker.quarterly_balance_sheet,
+        "annual_cf": ticker.cashflow,
+        "quarterly_cf": ticker.quarterly_cashflow,
+    }
+
+
+st.title("企業名・株式コード・ティッカーから財務データを取得するアプリ")
+
+st.success("アプリは起動しています。")
+
+st.write("入力例：Apple / AAPL / Microsoft / MSFT / トヨタ / 7203 / ソーファイ / SOFI")
+
+user_input = st.text_input(
+    "企業名・株式コード・ティッカーを入力してください",
+    placeholder="例：Apple、AAPL、トヨタ、7203"
 )
+
+ticker_symbol = resolve_ticker(user_input)
+
+if user_input:
+    st.info(f"変換後のティッカー: {ticker_symbol}")
+
+run_button = st.button("財務データを取得する")
+
+if run_button:
+    if not ticker_symbol:
+        st.error("企業名・株式コード・ティッカーを入力してください。")
+        st.stop()
+
+    try:
+        with st.spinner("財務データを取得中です。少し待ってください。"):
+            data = fetch_data(ticker_symbol)
+
+        info = data["info"]
+        annual_income = data["annual_income"]
+        quarterly_income = data["quarterly_income"]
+        annual_bs = data["annual_bs"]
+        quarterly_bs = data["quarterly_bs"]
+        annual_cf = data["annual_cf"]
+        quarterly_cf = data["quarterly_cf"]
+
+        if (
+            (annual_income is None or annual_income.empty)
+            and (annual_bs is None or annual_bs.empty)
+            and (annual_cf is None or annual_cf.empty)
+        ):
+            st.error("財務データを取得できませんでした。ティッカーが正しいか確認してください。")
+            st.stop()
+
+        company_name = info.get("longName") or info.get("shortName") or ticker_symbol
+        currency = info.get("currency", "N/A")
+        sector = info.get("sector", "N/A")
+        industry = info.get("industry", "N/A")
+
+        st.subheader(company_name)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("ティッカー", ticker_symbol)
+        c2.metric("通貨", currency)
+        c3.metric("セクター", sector)
+        c4.metric("業種", industry)
+
+        latest_revenue = get_latest_value(annual_income, ["Total Revenue", "Revenue", "Operating Revenue"])
+        latest_operating_income = get_latest_value(annual_income, ["Operating Income"])
+        latest_net_income = get_latest_value(annual_income, ["Net Income", "Net Income Common Stockholders"])
+        latest_total_assets = get_latest_value(annual_bs, ["Total Assets"])
+        latest_equity = get_latest_value(annual_bs, ["Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest"])
+        latest_operating_cf = get_latest_value(annual_cf, ["Operating Cash Flow", "Cash Flow From Continuing Operating Activities"])
+
+        latest_operating_margin = None
+        latest_net_margin = None
+        latest_roe = None
+
+        if latest_revenue is not None and latest_revenue != 0:
+            if latest_operating_income is not None:
+                latest_operating_margin = latest_operating_income / latest_revenue
+            if latest_net_income is not None:
+                latest_net_margin = latest_net_income / latest_revenue
+
+        if latest_equity is not None and latest_equity != 0:
+            if latest_net_income is not None:
+                latest_roe = latest_net_income / latest_equity
+
+        st.markdown("## 最新年度の主要指標")
+
+        m1, m2, m3, m4, m5, m6 = st.columns(6)
+        m1.metric("売上高", format_number(latest_revenue))
+        m2.metric("営業利益", format_number(latest_operating_income))
+        m3.metric("純利益", format_number(latest_net_income))
+        m4.metric("総資産", format_number(latest_total_assets))
+        m5.metric("自己資本", format_number(latest_equity))
+        m6.metric("営業CF", format_number(latest_operating_cf))
+
+        st.markdown("## 収益性指標")
+
+        r1, r2, r3 = st.columns(3)
+        r1.metric("営業利益率", format_percent(latest_operating_margin))
+        r2.metric("純利益率", format_percent(latest_net_margin))
+        r3.metric("ROE", format_percent(latest_roe))
+
+        trend_df = build_trend_df(annual_income, annual_bs)
+
+        st.markdown("## 売上高・営業利益・純利益の推移")
+
+        if trend_df.empty:
+            st.info("グラフ表示に必要なデータがありません。")
+        else:
+            chart_df = trend_df[["売上高", "営業利益", "純利益"]].dropna(how="all")
+            if chart_df.empty:
+                st.info("売上高・営業利益・純利益のデータが不足しています。")
+            else:
+                st.line_chart(chart_df)
+
+        st.markdown("## ROE・営業利益率・純利益率の推移")
+
+        if trend_df.empty:
+            st.info("収益性指標のグラフ表示に必要なデータがありません。")
+        else:
+            ratio_df = trend_df[["ROE", "営業利益率", "純利益率"]].copy()
+            ratio_df = ratio_df * 100
+            ratio_df = ratio_df.dropna(how="all")
+
+            if ratio_df.empty:
+                st.info("ROE・営業利益率・純利益率のデータが不足しています。")
+            else:
+                st.line_chart(ratio_df)
+
+        st.markdown("## 年次トレンドデータ")
+
+        if trend_df.empty:
+            st.info("年次トレンドデータがありません。")
+        else:
+            display_trend_df = trend_df.copy()
+
+            for col in ["営業利益率", "純利益率", "ROE"]:
+                if col in display_trend_df.columns:
+                    display_trend_df[col] = display_trend_df[col].apply(
+                        lambda x: f"{x:.2%}" if pd.notna(x) else "N/A"
+                    )
+
+            st.dataframe(display_trend_df, use_container_width=True)
+
+        st.markdown("## 財務三表")
+
+        annual_tab, quarterly_tab = st.tabs(["年次財務諸表", "四半期財務諸表"])
+
+        with annual_tab:
+            pl_tab, bs_tab, cf_tab = st.tabs(["損益計算書", "貸借対照表", "キャッシュフロー計算書"])
+
+            with pl_tab:
+                df = statement_to_display(annual_income)
+                if df.empty:
+                    st.info("年次の損益計算書データはありません。")
+                else:
+                    st.dataframe(df, use_container_width=True)
+
+            with bs_tab:
+                df = statement_to_display(annual_bs)
+                if df.empty:
+                    st.info("年次の貸借対照表データはありません。")
+                else:
+                    st.dataframe(df, use_container_width=True)
+
+            with cf_tab:
+                df = statement_to_display(annual_cf)
+                if df.empty:
+                    st.info("年次のキャッシュフロー計算書データはありません。")
+                else:
+                    st.dataframe(df, use_container_width=True)
+
+        with quarterly_tab:
+            q_pl_tab, q_bs_tab, q_cf_tab = st.tabs(["損益計算書", "貸借対照表", "キャッシュフロー計算書"])
+
+            with q_pl_tab:
+                df = statement_to_display(quarterly_income)
+                if df.empty:
+                    st.info("四半期の損益計算書データはありません。")
+                else:
+                    st.dataframe(df, use_container_width=True)
+
+            with q_bs_tab:
+                df = statement_to_display(quarterly_bs)
+                if df.empty:
+                    st.info("四半期の貸借対照表データはありません。")
+                else:
+                    st.dataframe(df, use_container_width=True)
+
+            with q_cf_tab:
+                df = statement_to_display(quarterly_cf)
+                if df.empty:
+                    st.info("四半期のキャッシュフロー計算書データはありません。")
+                else:
+                    st.dataframe(df, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"エラーが発生しました: {e}")
+
+else:
+    st.info("入力後に「財務データを取得する」ボタンを押してください。")
