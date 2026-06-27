@@ -1,0 +1,303 @@
+﻿{% load static %}
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>財務分析アプリ</title>
+  <script src="{% static 'analyzer/js/chart.umd.min.js' %}"></script>
+  <style>
+    :root {
+      --bg: #f5f7fa;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --accent: #2563eb;
+      --accent-soft: #eff6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Meiryo UI", "Segoe UI", sans-serif;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 16px 64px; }
+    h1 { font-size: 1.5rem; margin: 0 0 4px; }
+    .lead { color: var(--muted); margin: 0 0 20px; font-size: .9rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    form.search { display: flex; gap: 8px; flex-wrap: wrap; }
+    .ticker-input {
+      flex: 1 1 280px;
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    .ticker-input:focus { outline: 2px solid var(--accent); border-color: var(--accent); }
+    button.submit {
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 10px 20px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    button.submit:hover { background: #1d4ed8; }
+    .examples { font-size: .82rem; color: var(--muted); margin-top: 10px; }
+    .resolved { font-size: .85rem; color: var(--accent); margin-top: 8px; }
+    .error {
+      background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c;
+      padding: 12px 14px; border-radius: 8px; font-size: .9rem;
+    }
+    .field-error { color: #b91c1c; font-size: .82rem; margin-top: 6px; }
+    .company-name { font-size: 1.3rem; font-weight: 700; margin: 0 0 12px; }
+    .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .metric-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; }
+    .ratio-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .metric {
+      background: var(--accent-soft); border-radius: 10px; padding: 12px;
+      text-align: center;
+    }
+    .metric .label { font-size: .75rem; color: var(--muted); }
+    .metric .value { font-size: 1.05rem; font-weight: 700; margin-top: 2px; word-break: break-word; }
+    h2.section { font-size: 1.1rem; margin: 24px 0 12px; border-left: 4px solid var(--accent); padding-left: 10px; }
+    .chart-box { position: relative; height: 320px; }
+    .table-scroll { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: right; white-space: nowrap; }
+    th { background: #f8fafc; }
+    td:first-child, th:first-child { text-align: left; position: sticky; left: 0; background: #f8fafc; }
+    .tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+    .tab-btn {
+      font-family: inherit; font-size: .85rem; padding: 6px 14px; cursor: pointer;
+      border: 1px solid var(--border); background: #fff; border-radius: 8px; color: var(--muted);
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .muted-note { color: var(--muted); font-size: .88rem; }
+    @media (max-width: 760px) {
+      .info-grid, .metric-grid, .ratio-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <h1>📊 財務分析アプリ</h1>
+  <p class="lead">企業名・株式コード・ティッカーから財務データを取得し、主要KPIとトレンドを可視化します。</p>
+
+  <div class="card">
+    <form class="search" method="get" action="{% url 'analyzer:index' %}">
+      {{ form.query }}
+      <button class="submit" type="submit">財務データを取得する</button>
+    </form>
+    {% if form.query.errors %}
+      <div class="field-error">{{ form.query.errors.0 }}</div>
+    {% endif %}
+    <div class="examples">入力例：Apple / AAPL / Microsoft / MSFT / トヨタ / 7203 / ソーファイ / SOFI</div>
+    {% if resolved %}<div class="resolved">変換後のティッカー：{{ resolved }}</div>{% endif %}
+  </div>
+
+  {% if error %}
+    <div class="card"><div class="error">{{ error }}</div></div>
+  {% endif %}
+
+  {% if result %}
+    <div class="card">
+      <div class="company-name">{{ result.company_name }}</div>
+      <div class="info-grid">
+        <div class="metric"><div class="label">ティッカー</div><div class="value">{{ result.ticker_symbol }}</div></div>
+        <div class="metric"><div class="label">通貨</div><div class="value">{{ result.currency }}</div></div>
+        <div class="metric"><div class="label">セクター</div><div class="value">{{ result.sector }}</div></div>
+        <div class="metric"><div class="label">業種</div><div class="value">{{ result.industry }}</div></div>
+      </div>
+
+      <h2 class="section">最新年度の主要指標</h2>
+      <div class="metric-grid">
+        <div class="metric"><div class="label">売上高</div><div class="value">{{ result.metrics.revenue }}</div></div>
+        <div class="metric"><div class="label">営業利益</div><div class="value">{{ result.metrics.operating_income }}</div></div>
+        <div class="metric"><div class="label">純利益</div><div class="value">{{ result.metrics.net_income }}</div></div>
+        <div class="metric"><div class="label">総資産</div><div class="value">{{ result.metrics.total_assets }}</div></div>
+        <div class="metric"><div class="label">自己資本</div><div class="value">{{ result.metrics.equity }}</div></div>
+        <div class="metric"><div class="label">営業CF</div><div class="value">{{ result.metrics.operating_cf }}</div></div>
+      </div>
+
+      <h2 class="section">収益性指標</h2>
+      <div class="ratio-grid">
+        <div class="metric"><div class="label">営業利益率</div><div class="value">{{ result.profitability.operating_margin }}</div></div>
+        <div class="metric"><div class="label">純利益率</div><div class="value">{{ result.profitability.net_margin }}</div></div>
+        <div class="metric"><div class="label">ROE</div><div class="value">{{ result.profitability.roe }}</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="section">売上高・営業利益・純利益の推移</h2>
+      {% if result.trend.labels %}
+        <div class="chart-box"><canvas id="trendChart"></canvas></div>
+      {% else %}
+        <p class="muted-note">グラフ表示に必要なデータがありません。</p>
+      {% endif %}
+
+      <h2 class="section">ROE・営業利益率・純利益率の推移（%）</h2>
+      {% if result.trend.labels %}
+        <div class="chart-box"><canvas id="ratioChart"></canvas></div>
+      {% else %}
+        <p class="muted-note">収益性指標のグラフ表示に必要なデータがありません。</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="section">年次トレンドデータ</h2>
+      {% if result.trend.table %}
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>決算年</th><th>売上高</th><th>営業利益</th><th>純利益</th>
+              <th>自己資本</th><th>営業利益率</th><th>純利益率</th><th>ROE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in result.trend.table %}
+            <tr>
+              <td>{{ r.year }}</td><td>{{ r.revenue }}</td><td>{{ r.operating_income }}</td>
+              <td>{{ r.net_income }}</td><td>{{ r.equity }}</td>
+              <td>{{ r.operating_margin }}</td><td>{{ r.net_margin }}</td><td>{{ r.roe }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <p class="muted-note">年次トレンドデータがありません。</p>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h2 class="section">財務三表</h2>
+
+      <div class="tabs" data-tab-group="period">
+        <button type="button" class="tab-btn active" data-tab="annual">年次財務諸表</button>
+        <button type="button" class="tab-btn" data-tab="quarterly">四半期財務諸表</button>
+      </div>
+
+      {% for period_key, period in result.statements.items %}
+      <div class="tab-panel {% if period_key == 'annual' %}active{% endif %}" data-panel-group="period" data-panel="{{ period_key }}">
+        <div class="tabs" data-tab-group="stmt-{{ period_key }}">
+          <button type="button" class="tab-btn active" data-tab="pl">損益計算書</button>
+          <button type="button" class="tab-btn" data-tab="bs">貸借対照表</button>
+          <button type="button" class="tab-btn" data-tab="cf">キャッシュフロー計算書</button>
+        </div>
+        {% for stmt_key, stmt in period.items %}
+        <div class="tab-panel {% if stmt_key == 'pl' %}active{% endif %}" data-panel-group="stmt-{{ period_key }}" data-panel="{{ stmt_key }}">
+          {% if stmt.rows %}
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>{% for col in stmt.columns %}<th>{{ col }}</th>{% endfor %}</tr>
+              </thead>
+              <tbody>
+                {% for row in stmt.rows %}
+                <tr>{% for cell in row %}<td>{{ cell }}</td>{% endfor %}</tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+            <p class="muted-note">データはありません。</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+
+    {{ result.trend|json_script:"trend-data" }}
+  {% endif %}
+</div>
+
+<script>
+  // ---- タブ切替 ----
+  document.querySelectorAll('.tabs').forEach(function (tabsEl) {
+    var group = tabsEl.getAttribute('data-tab-group');
+    tabsEl.querySelectorAll('.tab-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var target = btn.getAttribute('data-tab');
+        tabsEl.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        document.querySelectorAll('[data-panel-group="' + group + '"]').forEach(function (p) {
+          p.classList.toggle('active', p.getAttribute('data-panel') === target);
+        });
+      });
+    });
+  });
+
+  // ---- Chart.js 描画 ----
+  (function () {
+    var dataEl = document.getElementById('trend-data');
+    if (!dataEl) { return; }
+    if (typeof Chart === 'undefined') {
+      console.error('Chart.js が読み込まれていません。static の chart.umd.min.js を確認してください。');
+      return;
+    }
+    var t = JSON.parse(dataEl.textContent);
+    if (!t.labels || !t.labels.length) { return; }
+
+    var trendCanvas = document.getElementById('trendChart');
+    if (trendCanvas) {
+      new Chart(trendCanvas, {
+        type: 'line',
+        data: {
+          labels: t.labels,
+          datasets: [
+            { label: '売上高', data: t.revenue, borderColor: '#2563eb', backgroundColor: '#2563eb', tension: .25 },
+            { label: '営業利益', data: t.operating_income, borderColor: '#16a34a', backgroundColor: '#16a34a', tension: .25 },
+            { label: '純利益', data: t.net_income, borderColor: '#f59e0b', backgroundColor: '#f59e0b', tension: .25 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom' } }
+        }
+      });
+    }
+
+    var ratioCanvas = document.getElementById('ratioChart');
+    if (ratioCanvas) {
+      new Chart(ratioCanvas, {
+        type: 'line',
+        data: {
+          labels: t.labels,
+          datasets: [
+            { label: 'ROE', data: t.roe, borderColor: '#dc2626', backgroundColor: '#dc2626', tension: .25 },
+            { label: '営業利益率', data: t.operating_margin, borderColor: '#2563eb', backgroundColor: '#2563eb', tension: .25 },
+            { label: '純利益率', data: t.net_margin, borderColor: '#7c3aed', backgroundColor: '#7c3aed', tension: .25 }
+          ]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: { legend: { position: 'bottom' } },
+          scales: { y: { ticks: { callback: function (v) { return v + '%'; } } } }
+        }
+      });
+    }
+  })();
+</script>
+</body>
+</html>
+
